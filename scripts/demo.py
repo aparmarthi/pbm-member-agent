@@ -1,9 +1,9 @@
 """Scripted end-to-end demo of the PBM member agent.
 
-Walks eight short acts through the compiled graph — one per design claim in the
-README — and prints each reply alongside the state the graph decided on (intent,
-escalation, handoff target). Runs on the mock LLM: no keys, no cost, same output
-every time.
+Each act is one multi-turn conversation (one checkpointed session), chosen to
+show one design claim from the README. Every reply is printed with the state
+the graph decided on (intent, escalation, handoff target). It runs on the mock
+LLM, so it needs no keys, costs nothing, and prints the same output every time.
 
 Usage:
     python -m scripts.demo            # run straight through
@@ -13,72 +13,78 @@ Usage:
 from __future__ import annotations
 
 import argparse
+from datetime import date
 
-from src.data import synthetic
-from src.graph.build import build_graph
 from src.models.schemas import Channel
+from src.serving.session import AgentSession
 
 # (title, talking point, scenario, channel, is_verified, utterances)
+# Utterances may use {member_id} / {dob}, filled from the synthetic member.
 ACTS = [
-    ("1. Order status — chat",
-     "Statuses derived from the reason-code catalog and rendered by template. "
-     "The LLM only picks the intent.",
-     "single_patient_mixed_statuses", Channel.CHAT, True, ["Where is my order?"]),
+    ("1. Order status — chat, with follow-up",
+     "Statuses come from the reason-code catalog and are rendered by template. "
+     "'See more' is resolved by code from the offer the agent made, not by the LLM.",
+     "single_patient_mixed_statuses", Channel.CHAT, True,
+     ["Where is my order?", "see more"]),
     ("2. Same member, voice channel",
-     "Same graph and data. Config changes the lookback window and pagination wording.",
-     "single_patient_mixed_statuses", Channel.VOICE, True, ["Where is my order?"]),
-    ("3. Family plan",
+     "Same graph and data. Config narrows the lookback to 10 days (4 orders, not 5) "
+     "and switches the pagination to spoken wording.",
+     "single_patient_mixed_statuses", Channel.VOICE, True,
+     ["Where is my order?", "yes"]),
+    ("3. Nothing recent — offer a wider search",
+     "No orders in the 45-day chat window, so the agent offers a 6-month search "
+     "instead of a dead end.",
+     "older_orders_only", Channel.CHAT, True, ["Where's my order?", "yes please"]),
+    ("4. Family plan",
      "One account holder, three patients. Ranked by priority tier, so the "
      "high-copay approval comes first.",
      "family_plan", Channel.CHAT, True, ["What's the status of my family's prescriptions?"]),
-    ("4. Must-transfer hold",
+    ("5. Must-transfer hold",
      "A must-transfer hold (RC14) sends the member to a human deterministically. "
-     "The model has no say in it.",
+     "The agent doesn't ask 'anything else?' before handing off.",
      "escalation_required", Channel.CHAT, True, ["Where is my prescription?"]),
-    ("5. Refill eligibility engine",
-     "Condition codes decide eligibility. The controlled substance (Adderall) and "
-     "the too-early fill are excluded; the renewal is listed with a note.",
-     "refill_mixed_conditions", Channel.CHAT, True, ["I'd like to refill my meds"]),
-    ("6. Drug price — coverage, prior auth, generic alternative",
-     "Covered price, prior-auth path, and a lower-cost generic. The agent never "
-     "recommends a drug for a condition.",
+    ("6. Refill eligibility engine",
+     "Condition codes decide eligibility. The controlled substance and too-early fill "
+     "are excluded. 'Yes' goes straight to the add-to-cart action.",
+     "refill_mixed_conditions", Channel.CHAT, True, ["I'd like to refill my meds", "yes"]),
+    ("7. Drug price — coverage, prior auth, follow-up",
+     "Covered price and a lower-cost generic. For a PA drug, the cost is offered, "
+     "not volunteered. The agent never recommends a drug for a condition.",
      "single_patient_mixed_statuses", Channel.CHAT, True,
-     ["How much is Lipitor?", "How much does Wegovy cost?"]),
-    ("7. Step-up auth before PHI",
-     "Unverified session: the auth gate pauses for a token before any PHI intent. "
-     "The prompt depends on intent (refill asks for the Rx number first).",
-     "family_plan", Channel.VOICE, False, ["Where is my order?", "I need a refill"]),
-    ("8. Crisis safety — gate runs before the router",
-     "Self-harm language is pinned to escalation before any LLM call. "
-     "The reply gives the 988 Lifeline and a warm handoff.",
-     "single_patient_mixed_statuses", Channel.CHAT, True,
-     ["Honestly I just want to end my life", "This is ridiculous, get me a human"]),
+     ["How much is Lipitor?", "How much does Wegovy cost?", "yes"]),
+    ("8. Step-up auth across turns",
+     "Unverified voice caller. The gate parks the request and collects a member ID "
+     "and DOB, matched in code (never sent to the LLM). Then it answers the "
+     "original question.",
+     "single_patient_mixed_statuses", Channel.VOICE, False,
+     ["Where is my order?", "It's {member_id}", "{dob}"]),
+    ("9. Crisis safety — even mid-authentication",
+     "Self-harm language is pinned to escalation before any LLM call, including "
+     "while a credential prompt is pending. The reply gives the 988 Lifeline.",
+     "family_plan", Channel.VOICE, False,
+     ["I need a refill", "Honestly I just want to end my life"]),
 ]
 
 
-def run_turn(graph, member, channel: Channel, is_verified: bool, text: str) -> None:
-    """Send one utterance through the graph and print reply plus decision state.
+def run_act(scenario: str, channel: Channel, verified: bool, utterances: list[str]) -> None:
+    """Play one conversation and print each reply with the graph's decisions.
 
     Args:
-        graph: Compiled LangGraph runnable.
-        member: Synthetic member loaded into the session.
+        scenario: Synthetic member scenario name.
         channel: Active channel.
-        is_verified: Whether the session has already passed step-up auth.
-        text: Member utterance.
+        verified: Whether the session starts already authenticated.
+        utterances: Member turns, optionally templated with {member_id} / {dob}.
     """
-    result = graph.invoke({
-        "user_input": text,
-        "channel": channel,
-        "member": member,
-        "is_verified": is_verified,
-        "messages": [("user", text)],
-    })
-    intent = result.get("intent")
-    print(f"\n  member> {text}")
-    print("  agent>  " + result["messages"][-1].content.replace("\n", "\n          "))
-    print(f"  [intent={intent.value if intent else None} "
-          f"escalated={bool(result.get('escalated'))} "
-          f"handoff={result.get('handoff_target')}]")
+    session = AgentSession(scenario, channel, verified=verified)
+    fill = {"member_id": session.member.member_id,
+            "dob": date.fromisoformat(session.member.patients[0].dob).strftime("%B %-d, %Y")}
+    for template in utterances:
+        text = template.format(**fill)
+        turn = session.send(text)
+        print(f"\n  member> {text}")
+        print("  agent>  " + turn.reply.replace("\n", "\n          "))
+        print(f"  [intent={turn.intent.value} escalated={turn.escalated} "
+              f"handoff={turn.handoff_target}]")
 
 
 def main() -> None:
@@ -87,16 +93,14 @@ def main() -> None:
     parser.add_argument("--pause", action="store_true", help="wait for Enter between acts")
     args = parser.parse_args()
 
-    graph = build_graph()
     for title, point, scenario, channel, verified, utterances in ACTS:
         if args.pause:
             input("\n(press Enter) ")
         print(f"\n{'=' * 78}\n{title}  [{scenario} · {channel.value}]")
         print(f"  -> {point}")
-        member = synthetic.build(scenario)
-        for text in utterances:
-            run_turn(graph, member, channel, verified, text)
-    print(f"\n{'=' * 78}\nDone. Tests: pytest -q  ·  Interactive: python -m src.serving.cli\n")
+        run_act(scenario, channel, verified, utterances)
+    print(f"\n{'=' * 78}\nDone. Tests: pytest -q  ·  Evals: python -m evals.run  ·  "
+          f"UI: streamlit run src/serving/dashboard.py\n")
 
 
 if __name__ == "__main__":

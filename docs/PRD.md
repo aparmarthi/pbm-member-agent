@@ -23,15 +23,24 @@ correctly from grounded system data without unnecessary escalation.
 3. **Routing accuracy** — correct intent selection, especially escalation.
 
 ## Scope (this build)
-- Order Status read path, both channels, deep.
-- Crisis-safe escalation with 988 + human handoff.
-- Deterministic reason-code resolution, priority ranking, pagination.
-- Stubs (real interfaces): refill, drug price, order actions.
+- Order Status read path, both channels, with lookback windows enforced (chat 45 days
+  with a 6-month offer; voice 10 days, 30 for future fills) and pagination follow-ups.
+- Refill eligibility (condition-code engine) and drug price (coverage, prior auth,
+  generic alternative), each with deterministic follow-ups ("yes", "see more").
+- Multi-turn sessions on a LangGraph checkpointer; follow-ups resolved in code from
+  the offer the agent made, not re-classified by the LLM.
+- Step-up auth across turns (member ID / Rx number → DOB → replay of the original
+  request); identity tokens are matched in code and never sent to the LLM.
+- Crisis-safe escalation with 988 + human handoff, including mid-authentication.
+- Serving: FastAPI (`/health`, sessions), Streamlit demo, Dockerfile.
+- Eval harness (`evals/`) for every metric above, with timestamped results.
+- Stubs (real interfaces): order-action execution (deep-link only).
 
 ## Out of scope (next passes)
-- Deep order-action execution (chat web deep-link vs. voice inline execute + auth).
-- Real refill / drug-price flows.
-- Persistence/checkpointer, multi-turn context resolution, RAG for benefit inquiry.
+- Deep order-action execution (voice inline execute + confirmation).
+- LLM crisis-risk classification alongside the keyword gate (see `evals/README.md`).
+- Durable session store (Postgres/Redis checkpointer) and idle-session expiry.
+- RAG for benefit inquiry.
 
 ## Success criteria (acceptance, from source user stories)
 - Statuses presented in priority order: self-serve holds → ready → other → delivered.
@@ -39,6 +48,13 @@ correctly from grounded system data without unnecessary escalation.
 - `ONHOLD_RC14` and API errors transfer to a human.
 - FastStart suppressed on voice.
 - No orders → offer help / refill check, never a dead end.
+- A held prescription is never offered for refill; RC14 hands off without "anything else?".
+- Failed verification (2 bad tokens, or DOB retries exhausted) transfers to a human.
+
+## Current results
+Mock-provider baseline in [`evals/README.md`](../evals/README.md): groundedness 1.00,
+task completion 16/16, false crisis escalation 0.00. **Crisis recall 0.60 fails the
+1.00 bar.** That is the top open risk.
 
 ## Trade-offs
 - **Determinism over LLM freedom** for status derivation: sacrifices conversational

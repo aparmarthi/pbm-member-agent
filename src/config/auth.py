@@ -11,7 +11,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import date, datetime
 from enum import Enum
+
+from src.models.schemas import Member
 
 
 class AuthLevel(str, Enum):
@@ -38,6 +41,7 @@ PRIMARY_PLAN_CODES = {1, 2, 3, 4, 5, 14, 15, 16, 17, 18}
 SECONDARY_PLAN_CODES = {0, 6, 7, 8, 9, 10, 11, 12, 13}
 
 MAX_DOB_RETRIES = 2  # first failure re-prompts once; then defer/transfer.
+MAX_TOKEN_ATTEMPTS = 2  # a second unmatched member ID / Rx number transfers.
 
 
 @dataclass
@@ -51,6 +55,10 @@ class AuthState:
         privacy_flag: Whether the matched member has a privacy flag (forces
             transfer after authentication).
         token_verified: Whether a primary token (member ID / Rx) was validated.
+        token_attempts: Count of unmatched primary-token attempts so far.
+        step: Which credential is being collected next: ``"token"`` or ``"dob"``.
+        pending_intent: The PHI intent waiting on step-up, resumed once verified.
+        pending_input: The member's original request, replayed once verified.
     """
 
     level: AuthLevel = AuthLevel.NONE
@@ -58,6 +66,10 @@ class AuthState:
     dob_attempts: int = 0
     privacy_flag: bool = False
     token_verified: bool = False
+    token_attempts: int = 0
+    step: str = "token"
+    pending_intent: str | None = None
+    pending_input: str | None = None
 
 
 def requires_step_up(intent: str, level: AuthLevel) -> bool:
@@ -102,6 +114,72 @@ def valid_rx_number(token: str) -> bool:
     t = token.strip().upper().removeprefix("RX-").removeprefix("RX")
     t = t.lstrip("-")
     return bool(re.fullmatch(r"\d{5,12}", t))
+
+
+def match_token(text: str, member: Member) -> bool:
+    """Return True if the utterance contains this member's ID or one of their Rx numbers.
+
+    Digit groups separated by spaces or dashes are joined first, so a spoken
+    "403 314 569" matches ``403314569``.
+
+    Args:
+        text: Raw member utterance.
+        member: The account the session is matched to.
+
+    Returns:
+        Whether a structurally valid token in the text belongs to this member.
+    """
+    rx_numbers = {rx.rx_number for p in member.patients for o in p.orders
+                  for rx in o.prescriptions}
+    joined = re.sub(r"(?<=\d)[\s-]+(?=\d)", "", text)
+    for token in re.findall(r"[A-Za-z0-9-]{5,}", joined):
+        if valid_member_id(token) and token.upper() == member.member_id.upper():
+            return True
+        if valid_rx_number(token) and re.sub(r"\D", "", token) in rx_numbers:
+            return True
+    return False
+
+
+_DATE_PATTERN = re.compile(
+    r"\d{4}-\d{1,2}-\d{1,2}|\d{1,2}/\d{1,2}/\d{4}|[A-Za-z]+ \d{1,2}(?:st|nd|rd|th)?,? \d{4}"
+)
+_DATE_FORMATS = ("%Y-%m-%d", "%m/%d/%Y", "%B %d %Y", "%b %d %Y")
+
+
+def parse_dob(text: str) -> date | None:
+    """Extract a date of birth from free text.
+
+    Accepts ISO (``1988-01-01``), US numeric (``01/01/1988``), and spelled-out
+    (``January 1st, 1988``) forms.
+
+    Args:
+        text: Raw member utterance.
+
+    Returns:
+        The parsed date, or None if no supported date is present.
+    """
+    for match in _DATE_PATTERN.findall(text):
+        cleaned = re.sub(r"(?<=\d)(st|nd|rd|th)", "", match).replace(",", "")
+        for fmt in _DATE_FORMATS:
+            try:
+                return datetime.strptime(cleaned, fmt).date()
+            except ValueError:
+                continue
+    return None
+
+
+def dob_matches(text: str, member: Member) -> bool:
+    """Return True if the utterance contains the DOB of any patient on the account.
+
+    Args:
+        text: Raw member utterance.
+        member: The account the session is matched to.
+
+    Returns:
+        Whether the stated DOB matches a patient the caller may act for.
+    """
+    dob = parse_dob(text)
+    return dob is not None and any(p.dob == dob.isoformat() for p in member.patients)
 
 
 def register_dob_attempt(state: AuthState, success: bool) -> str:

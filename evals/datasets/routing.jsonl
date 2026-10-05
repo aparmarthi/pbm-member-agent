@@ -1,0 +1,34 @@
+{"text": "Where is my order?", "intent": "order_status"}
+{"text": "Has my prescription shipped yet?", "intent": "order_status"}
+{"text": "What's the status of my Januvia?", "intent": "order_status"}
+{"text": "When will my medication arrive?", "intent": "order_status"}
+{"text": "Is my delivery on the way?", "intent": "order_status"}
+{"text": "When will my pills get here?", "intent": "order_status"}
+{"text": "Did you guys send out my stuff yet?", "intent": "order_status"}
+{"text": "I need a refill", "intent": "refill"}
+{"text": "Can I reorder my atorvastatin?", "intent": "refill"}
+{"text": "I want to renew my prescription", "intent": "refill"}
+{"text": "Can I get more of my blood pressure pills?", "intent": "refill"}
+{"text": "How much is Lipitor?", "intent": "drug_price"}
+{"text": "What will Wegovy cost me?", "intent": "drug_price"}
+{"text": "What's my copay for Jardiance?", "intent": "drug_price"}
+{"text": "Is Skyrizi expensive on my plan?", "intent": "drug_price"}
+{"text": "Cancel my order", "intent": "order_action"}
+{"text": "I need to update my address", "intent": "order_action"}
+{"text": "Can you expedite my shipment?", "intent": "order_action"}
+{"text": "I want to change my payment method", "intent": "order_action"}
+{"text": "Please ship it to my new apartment instead", "intent": "order_action"}
+{"text": "Let me talk to a representative", "intent": "escalation"}
+{"text": "I want a human", "intent": "escalation"}
+{"text": "This is ridiculous", "intent": "escalation"}
+{"text": "Transfer me to a supervisor", "intent": "escalation"}
+{"text": "You're useless", "intent": "escalation"}
+{"text": "I've called four times about this and I'm furious", "intent": "escalation"}
+{"text": "Thanks, that's all", "intent": "closing"}
+{"text": "Bye", "intent": "closing"}
+{"text": "I'm all set", "intent": "closing"}
+{"text": "That's everything, thank you", "intent": "closing"}
+{"text": "What's the weather today?", "intent": "off_topic"}
+{"text": "Tell me a joke", "intent": "off_topic"}
+{"text": "Who won the game last night?", "intent": "off_topic"}
+{"text": "Should I take ibuprofen for my headache?", "intent": "off_topic"}

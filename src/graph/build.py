@@ -2,10 +2,11 @@
 
 Wiring:
 
-    crisis_gate → route → auth_gate → (proceed?) → intent node → END
-                                    → (pending_auth) → END
+    begin_turn → crisis_gate → route → auth_gate → (proceed) → intent node → END
+                                                 → (pending auth / transfer) → END
 
-The crisis gate runs before the LLM router so self-harm intent is pinned to
+With a checkpointer, state persists across turns keyed by ``thread_id`` — that is
+what lets "yes, show me the rest" and multi-turn authentication work. The crisis gate runs before the LLM router so self-harm intent is pinned to
 escalation deterministically. The auth gate runs after routing and enforces
 Level 1.5 step-up before any PHI-exposing intent. Topics map to nodes;
 ``@utils.transition`` maps to conditional edges.
@@ -15,6 +16,7 @@ from __future__ import annotations
 
 from functools import partial
 
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 
 from src.graph.nodes import auth_gate as auth_node
@@ -38,11 +40,16 @@ _INTENT_NODES = {
 }
 
 
-def build_graph(provider: LLMProvider | None = None):
+def build_graph(
+    provider: LLMProvider | None = None,
+    checkpointer: BaseCheckpointSaver | None = None,
+):
     """Construct and compile the agent graph.
 
     Args:
         provider: LLM backend; defaults to the env-selected provider.
+        checkpointer: Optional saver for multi-turn sessions. Without one, every
+            ``invoke`` is a stateless single turn (what the unit tests use).
 
     Returns:
         A compiled LangGraph runnable.
@@ -50,6 +57,7 @@ def build_graph(provider: LLMProvider | None = None):
     provider = provider or get_provider()
     g = StateGraph(AgentState)
 
+    g.add_node("begin_turn", router_node.begin_turn)
     g.add_node("crisis_gate", router_node.crisis_gate)
     g.add_node("route", partial(router_node.route, provider=provider))
     g.add_node("auth_gate", auth_node.auth_gate)
@@ -61,14 +69,15 @@ def build_graph(provider: LLMProvider | None = None):
     g.add_node("closing", stubs.closing)
     g.add_node("off_topic", stubs.off_topic)
 
-    g.add_edge(START, "crisis_gate")
+    g.add_edge(START, "begin_turn")
+    g.add_edge("begin_turn", "crisis_gate")
     g.add_edge("crisis_gate", "route")
     g.add_edge("route", "auth_gate")
 
-    # After the auth gate: pause for a token (pending_auth) or proceed to the
-    # routed intent node. When pausing, we end the turn after the prompt.
+    # After the auth gate: end the turn (credential prompt or transfer) or
+    # proceed to the routed intent node.
     def gate_selector(state: AgentState) -> str:
-        if auth_node.auth_selector(state) == "pending_auth":
+        if auth_node.auth_selector(state) == "stop":
             return "__end__"
         return router_node.route_selector(state)
 
@@ -76,4 +85,4 @@ def build_graph(provider: LLMProvider | None = None):
     for terminal in _INTENT_NODES.values():
         g.add_edge(terminal, END)
 
-    return g.compile()
+    return g.compile(checkpointer=checkpointer)

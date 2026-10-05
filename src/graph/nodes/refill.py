@@ -49,32 +49,42 @@ def refill(state: AgentState) -> AgentState:
                  if blocking else _NO_RX)
         return {"refill_candidates": candidates, "messages": [("ai", reply)]}
 
-    reply = _render(listable, channel)
-    return {"refill_candidates": candidates, "messages": [("ai", reply)]}
+    page = state.get("page", 1) if state.get("followup") == "more_refills" else 1
+    reply, remaining = _render(listable, channel, page)
+    return {"refill_candidates": candidates, "page": page,
+            "offer": "more_refills" if remaining else "add_to_cart",
+            "messages": [("ai", reply)]}
 
 
-def _render(listable: list[RefillCandidate], channel: Channel) -> str:
-    """Render the refillable-prescription list per channel.
+def _render(listable: list[RefillCandidate], channel: Channel, page: int) -> tuple[str, int]:
+    """Render one page of the refillable-prescription list per channel.
 
     Args:
         listable: Refillable candidates, pre-sorted by list priority.
         channel: Active channel (controls pagination copy).
+        page: 1-based page to show.
 
     Returns:
-        Member-facing reply string.
+        The member-facing reply and how many candidates remain after this page.
     """
     page_size = for_channel(channel).page_size
-    page = listable[:page_size]
+    start = (page - 1) * page_size
+    shown = listable[start:start + page_size]
+    remaining = len(listable) - start - len(shown)
     lines = []
-    for c in page:
+    for c in shown:
         cost = f" — estimated ${c.price:.2f}" if c.price is not None else ""
         note = "" if c.outcome == "ready" else f" ({c.message})"
         lines.append(f"• {c.drug_name}{cost}{note}")
-    header = f"Here {'is' if len(page) == 1 else 'are'} {len(page)} prescription(s) ready to order:"
-    footer = "\nWould you like to add any of these to your order?"
-    if len(listable) > page_size:
-        more = len(listable) - len(page)
-        footer = (f"\nThat's the first {len(page)}. There are {more} more — "
-                  f"would you like to hear them?") if channel is Channel.VOICE else (
-                  f"\nShowing {len(page)} of {len(listable)}. Want to see the rest?")
-    return f"{header}\n" + "\n".join(lines) + footer
+    n = len(shown)
+    if page == 1:
+        header = f"Here {'is' if n == 1 else 'are'} {n} prescription{'' if n == 1 else 's'} you can order:"
+    else:
+        header = "Here's the other one:" if n == 1 else f"Here are the next {n}:"
+    if remaining and channel is Channel.VOICE:
+        footer = f"\nWould you like to hear the other {'one' if remaining == 1 else remaining}?"
+    elif remaining:
+        footer = f"\nShowing {start + n} of {len(listable)}. Want to see the rest?"
+    else:
+        footer = f"\nWould you like to add {'it' if n == 1 else 'any of these'} to your order?"
+    return f"{header}\n" + "\n".join(lines) + footer, remaining

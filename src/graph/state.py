@@ -42,6 +42,10 @@ class AgentState(TypedDict, total=False):
         drug_query: Drug name/params for a pricing turn.
         refill_candidates: Refill-evaluated prescriptions for this turn.
         price_quote: Resolved pricing/coverage for this turn.
+        lookback_days: Order-history window used for the current ``resolved`` list.
+        offer: Yes/no offer the agent made last turn (e.g. ``more_orders``),
+            consumed by the router on the next turn.
+        followup: The offer the member accepted this turn, if any.
     """
 
     messages: Annotated[list, add_messages]
@@ -59,3 +63,6 @@ class AgentState(TypedDict, total=False):
     drug_query: str | None
     refill_candidates: list[RefillCandidate]
     price_quote: PriceQuote | None
+    lookback_days: int
+    offer: str | None
+    followup: str | None

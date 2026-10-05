@@ -1,0 +1,10 @@
+.venv/
+.git/
+.env
+.env.*
+**/__pycache__/
+.pytest_cache/
+RECON.md
+docs/superpowers/
+.cursor/
+evals/results/

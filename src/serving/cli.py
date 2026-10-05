@@ -2,10 +2,11 @@
 
 Usage:
     python -m src.serving.cli --scenario family_plan --channel chat
+    python -m src.serving.cli --channel voice --unverified   # step-up auth flow
 
-Loads a synthetic member into session context, then runs an interactive REPL
-through the compiled graph. Uses the env-selected LLM provider (default: mock,
-so it runs with zero keys/cost).
+Loads a synthetic member into a multi-turn session and runs a REPL through the
+compiled graph. Uses the env-selected LLM provider (default: mock, so it runs
+with zero keys/cost).
 """
 
 from __future__ import annotations
@@ -13,17 +14,8 @@ from __future__ import annotations
 import argparse
 
 from src.data import synthetic
-from src.graph.build import build_graph
 from src.models.schemas import Channel
-
-
-def _last_ai_text(result: dict) -> str:
-    """Extract the latest AI message text from a graph result."""
-    for msg in reversed(result.get("messages", [])):
-        content = getattr(msg, "content", None)
-        if content:
-            return content
-    return "(no reply)"
+from src.serving.session import AgentSession
 
 
 def main() -> None:
@@ -32,14 +24,17 @@ def main() -> None:
     parser.add_argument("--scenario", default="single_patient_mixed_statuses",
                         choices=sorted(synthetic.SCENARIOS))
     parser.add_argument("--channel", default="chat", choices=[c.value for c in Channel])
+    parser.add_argument("--unverified", action="store_true",
+                        help="start unauthenticated (member ID / Rx number, then DOB)")
     args = parser.parse_args()
 
-    member = synthetic.build(args.scenario)
-    channel = Channel(args.channel)
-    graph = build_graph()
-
-    print(f"Loaded scenario '{args.scenario}' on {channel.value}. "
-          f"Type a message (Ctrl-C to exit).\n")
+    session = AgentSession(args.scenario, Channel(args.channel), verified=not args.unverified)
+    print(f"Loaded scenario '{args.scenario}' on {args.channel}. "
+          f"Type a message (Ctrl-C to exit).")
+    if args.unverified:
+        print(f"(synthetic credentials — member ID: {session.member.member_id}, "
+              f"DOB: {session.member.patients[0].dob})")
+    print()
     while True:
         try:
             user_input = input("you> ").strip()
@@ -48,14 +43,11 @@ def main() -> None:
             return
         if not user_input:
             continue
-        result = graph.invoke({
-            "user_input": user_input,
-            "channel": channel,
-            "member": member,
-            "is_verified": True,
-            "messages": [("user", user_input)],
-        })
-        print(f"agent> {_last_ai_text(result)}\n")
+        turn = session.send(user_input)
+        print(f"agent> {turn.reply}")
+        if turn.escalated:
+            print(f"       [handed off → {turn.handoff_target}]")
+        print()
 
 
 if __name__ == "__main__":
