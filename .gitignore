@@ -1,0 +1,41 @@
+# ---- PHI / real data protection (defensive) ----
+# NEVER commit raw source data. Only synthetic fixtures are allowed, and even
+# those live under data/fixtures/ which is regenerated from schema, never real.
+data/raw/
+data/*.xlsx
+data/*.csv
+*.xlsx
+*.csv
+!evals/**/*.csv          # eval expectation files are synthetic + safe
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# ---- Secrets ----
+.env
+.env.*
+!.env.example
+
+# ---- Tooling ----
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.DS_Store
+
+# ---- MLflow / artifacts ----
+mlruns/
+artifacts/*.pkl
+
+# ---- Private / not part of the project ----
+RECON.md
+docs/superpowers/
+.cursor/
