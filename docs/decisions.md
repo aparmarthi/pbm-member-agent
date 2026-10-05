@@ -103,8 +103,22 @@ completion/containment. It saves timestamped JSON and exits non-zero below
 thresholds.
 **Why:** Training-style unit tests prove the code does what I wrote. Evals
 measure whether it does what members need, and track that across changes.
-**Open finding (flagged, not yet implemented):** crisis recall is 0.60 on the
-keyword gate. The keywords were deliberately *not* patched to the four misses,
-since that would overfit the only measurement. Proposed architectural change:
-an LLM `crisis` flag OR'd with the gate, a 988 message driven by that state
-flag, and a held-out crisis set built from clinical phrasing categories.
+Crisis recall on the keyword gate was 0.60 when this harness first ran. That
+finding led to ADR-012.
+
+## ADR-012: Crisis detection as two OR'd detectors, judged on a held-out set
+**Decision:** A C-SSRS-structured lexicon (`src/config/crisis.py`) runs before
+routing. The router LLM also returns `crisis: bool`. Either one sets
+`state["crisis"]`, which drives the 988 reply. Neither can clear it, and it
+resets each turn. Recall is judged on `crisis_holdout.jsonl`, which an
+independent agent wrote without seeing the lexicon.
+**Why:** The old 988 message re-matched the gate's keywords, so even a correct
+LLM escalation produced a generic transfer. A lexicon is predictable, offline,
+and auditable, but it doesn't generalize: 1.00 on the dev set, 0.13 held-out.
+An LLM generalizes but can fail or be unavailable. OR-ing them gives the
+lexicon's floor plus the model's reach, and favors false alarms over misses.
+**Trade-offs:** Informational mentions ("does sertraline cause suicidal
+thoughts?") can trigger 988. The held-out false-alarm rate is 0.095, inside
+the 0.10 bar. Mid-auth turns get the lexicon only (ADR-009). The held-out set
+must never be tuned against; when it has been looked at too often, write a
+new one.

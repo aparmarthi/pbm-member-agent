@@ -46,6 +46,9 @@ class AgentState(TypedDict, total=False):
         offer: Yes/no offer the agent made last turn (e.g. ``more_orders``),
             consumed by the router on the next turn.
         followup: The offer the member accepted this turn, if any.
+        crisis: Set when the lexicon gate or the LLM flags crisis language this
+            turn; drives the 988 response. Either detector can raise it, neither
+            can clear it.
     """
 
     messages: Annotated[list, add_messages]
@@ -66,3 +69,4 @@ class AgentState(TypedDict, total=False):
     lookback_days: int
     offer: str | None
     followup: str | None
+    crisis: bool

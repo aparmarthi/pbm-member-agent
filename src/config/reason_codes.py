@@ -123,7 +123,7 @@ _CATALOG: tuple[ReasonCode, ...] = (
         "This order was canceled because the shipment wasn't approved in time. You can reorder it now.",
         (SelfServeOption.SHIPMENT_HOLD,), "Start reorder", go_to_refill=True,
     ),
-    # ---- Caremark hold: always transfer to a human ----
+    # ---- Profile hold: always transfer to a human ----
     ReasonCode(
         "ONHOLD_RC14", ParentStatus.DELAYED, "We need your help",
         "There's a note on your profile that we need to resolve before this order can ship.",

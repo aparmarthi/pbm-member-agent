@@ -54,14 +54,17 @@ class MockProvider(LLMProvider):
     def complete(self, system: str, user: str, *, json_mode: bool = False) -> str:
         text = user.lower()
         if json_mode:
-            return json.dumps({"intent": self._classify(text)})
+            intent = self._classify(text)
+            if intent == "crisis":
+                return json.dumps({"intent": "escalation", "crisis": True})
+            return json.dumps({"intent": intent, "crisis": False})
         return "OK"
 
     @staticmethod
     def _classify(text: str) -> str:
         rules = [
             (("suicide", "kill myself", "self harm", "self-harm", "hurt myself",
-              "end my life"), "escalation"),
+              "end my life"), "crisis"),
             (("agent", "representative", "human", "supervisor", "person",
               "useless", "ridiculous"), "escalation"),
             (("refill", "reorder", "renew"), "refill"),

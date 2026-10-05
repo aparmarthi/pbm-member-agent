@@ -37,12 +37,12 @@ def main() -> None:
     prev_metrics = previous["metrics"] if previous else {}
 
     print(f"\nEval run {report['timestamp']}  ·  provider={report['provider']}\n")
-    print(f"{'metric':32}{'value':>10}{'vs prev':>10}   threshold")
+    print(f"{'metric':40}{'value':>10}{'vs prev':>10}   threshold")
     for name, value in report["metrics"].items():
         delta = f"{value - prev_metrics[name]:+.3f}" if name in prev_metrics else "—"
         gate = report["thresholds"].get(name)
         verdict = f"{gate['op']} {gate['value']}  {'PASS' if gate['passed'] else 'FAIL'}" if gate else ""
-        print(f"{name:32}{value:>10.3f}{delta:>10}   {verdict}")
+        print(f"{name:40}{value:>10.3f}{delta:>10}   {verdict}")
 
     if report["failures"]:
         print(f"\n{len(report['failures'])} failing case(s):")

@@ -102,3 +102,35 @@ def test_singular_pagination_copy():
     s = AgentSession("single_patient_mixed_statuses", Channel.VOICE)
     assert "hear the other one?" in s.send("where is my order").reply
     assert "Here's the other one:" in s.send("yes").reply
+
+
+class _CrisisAwareLLM:
+    """Stands in for a live model that catches phrasing the lexicon misses."""
+
+    def complete(self, system: str, user: str, *, json_mode: bool = False) -> str:
+        if "disappear forever" in user:
+            return '{"intent": "off_topic", "crisis": true}'
+        return '{"intent": "order_status", "crisis": false}'
+
+
+def test_llm_crisis_flag_alone_triggers_988():
+    s = AgentSession("single_patient_mixed_statuses", provider=_CrisisAwareLLM())
+    turn = s.send("some days I just want to disappear forever")
+    assert turn.escalated and "988" in turn.reply
+
+
+def test_non_crisis_escalation_has_no_988():
+    turn = AgentSession("single_patient_mixed_statuses").send("get me a human")
+    assert turn.escalated and "988" not in turn.reply
+
+
+def test_crisis_flag_does_not_leak_into_next_turn():
+    s = AgentSession("single_patient_mixed_statuses")
+    s.send("I want to end my life")
+    assert "988" not in s.send("where is my order").reply
+
+
+def test_lexicon_ignores_idioms():
+    from src.config.crisis import detect_crisis
+    assert not detect_crisis("this copay is killing me, I'm dying to get it cheaper")
+    assert detect_crisis("I'm better off dead")

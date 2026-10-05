@@ -26,7 +26,7 @@ from src.config.auth import (
 from src.graph.state import AgentState
 from src.models.schemas import Intent
 
-# Prompts differ by intent per TLPDMSF-393 (refill asks Rx first; others ask ID).
+# Prompts differ by intent (refill asks Rx first; others ask ID).
 _REFILL_PROMPT = ("I can help with that — let me look up the account. "
                   "If you have the prescription number, you can give me that.")
 _OTHER_PROMPT = ("Let me look up the account. Do you have the member ID for you "

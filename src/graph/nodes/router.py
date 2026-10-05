@@ -15,24 +15,22 @@ from __future__ import annotations
 import json
 import re
 
+from src.config.crisis import detect_crisis
 from src.graph.state import AgentState
 from src.models.schemas import Intent
 from src.utils.llm import LLMProvider
 
-# Deterministic crisis triggers — never left to a classifier's discretion.
-_CRISIS_TERMS = (
-    "suicide", "kill myself", "self harm", "self-harm", "hurt myself",
-    "end my life", "want to die", "overdose",
-)
-
 _ROUTER_SYSTEM = (
     "You are the intent router for a pharmacy benefits member-service agent. "
     "Classify the member's message into exactly one intent and reply with a JSON "
-    "object {\"intent\": \"...\"}. Valid intents: order_status, order_action, "
+    "object {\"intent\": \"...\", \"crisis\": true|false}. Valid intents: order_status, order_action, "
     "refill, drug_price, escalation, closing, off_topic. Route to escalation for "
     "any request for a human/agent/representative or any expression of high "
     "frustration. Route order_status for questions about where an order/"
-    "prescription is or its delivery. Return only the JSON object."
+    "prescription is or its delivery. Set crisis to true if the message expresses, "
+    "even indirectly, a wish to die, suicidal thoughts, self-harm, a plan to "
+    "overdose, or hopelessness about living; idioms like 'this price is killing "
+    "me' are not a crisis. Return only the JSON object."
 )
 
 
@@ -61,7 +59,8 @@ def begin_turn(state: AgentState) -> AgentState:
     Returns:
         Resets for the fields each turn decides afresh.
     """
-    return {"intent": None, "escalated": False, "handoff_target": None, "followup": None}
+    return {"intent": None, "escalated": False, "handoff_target": None, "followup": None,
+            "crisis": False}
 
 
 def crisis_gate(state: AgentState) -> AgentState:
@@ -71,12 +70,11 @@ def crisis_gate(state: AgentState) -> AgentState:
         state: Current agent state.
 
     Returns:
-        State with intent pinned to ESCALATION when a crisis term is present;
-        otherwise unchanged.
+        State with intent pinned to ESCALATION and ``crisis`` set when the
+        lexicon matches; otherwise unchanged.
     """
-    text = (state.get("user_input") or "").lower()
-    if any(term in text for term in _CRISIS_TERMS):
-        return {"intent": Intent.ESCALATION}
+    if detect_crisis(state.get("user_input") or ""):
+        return {"intent": Intent.ESCALATION, "crisis": True}
     return {}
 
 
@@ -114,20 +112,24 @@ def route(state: AgentState, provider: LLMProvider) -> AgentState:
             return {"offer": None, "page": page, "intent": _OFFER_INTENTS[offer],
                     "followup": offer}
 
-    intent = _classify(state.get("user_input", ""), provider)
+    intent, crisis = _classify(state.get("user_input", ""), provider)
+    # The LLM is a second crisis detector: it can raise a crisis, never clear one.
+    if crisis:
+        return {**update, "intent": Intent.ESCALATION, "crisis": True}
     # "Which medication?" → a bare drug name classifies as off-topic; it isn't.
     if offer == "drug_name" and intent is Intent.OFF_TOPIC:
         intent = Intent.DRUG_PRICE
     return {**update, "intent": intent}
 
 
-def _classify(text: str, provider: LLMProvider) -> Intent:
-    """Ask the LLM for an intent, falling back to off-topic on bad output."""
+def _classify(text: str, provider: LLMProvider) -> tuple[Intent, bool]:
+    """Ask the LLM for an intent and crisis flag; off-topic, no crisis on bad output."""
     raw = provider.complete(_ROUTER_SYSTEM, text, json_mode=True)
     try:
-        return Intent(json.loads(raw).get("intent", "off_topic"))
+        parsed = json.loads(raw)
+        return Intent(parsed.get("intent", "off_topic")), parsed.get("crisis") is True
     except (json.JSONDecodeError, ValueError, AttributeError):
-        return Intent.OFF_TOPIC
+        return Intent.OFF_TOPIC, False
 
 
 def route_selector(state: AgentState) -> str:

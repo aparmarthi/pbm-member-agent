@@ -122,7 +122,7 @@ def no_orders(seed: int = 3) -> Member:
 
 
 def escalation_required(seed: int = 4) -> Member:
-    """Member whose only order carries a must-transfer Caremark hold (RC14)."""
+    """Member whose only order carries a must-transfer profile hold (RC14)."""
     rng = _rng(seed)
     p = _patient(rng, "self", status_codes=["ONHOLD_RC14"])
     return Member(member_id=_fake_id(rng, 11), internal_id=p.internal_id, patients=[p])

@@ -3,7 +3,7 @@
 Extracts the drug name from the utterance, runs a deterministic benefit lookup,
 and handles the three coverage outcomes from the pricing stories: not-covered
 (offer generic alternatives), prior-auth-required (explain + offer cost), and a
-covered price. The agent never recommends a drug for a condition (TLPDMSF-338).
+covered price. The agent never recommends a drug for a condition.
 """
 
 from __future__ import annotations

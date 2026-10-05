@@ -1,7 +1,6 @@
 """Authentication tiers and token validation (voice auth model).
 
-Encodes the deterministic parts of the auth stories (TLPDMSF-203/204/246/
-372/393/244/209): ANI match to a single family, Level 1.5 step-up when PHI/PII
+Encodes the deterministic parts of the voice-auth requirements: ANI match to a single family, Level 1.5 step-up when PHI/PII
 is involved, primary-token collection (member ID or Rx number), DOB
 verification with bounded retries, privacy-flag transfer, and caller-type
 routing. The LLM never decides whether a caller is authenticated — these rules do.
@@ -36,7 +35,7 @@ class CallerType(str, Enum):
 # Intents that require Level 1.5 step-up because they expose PHI/PII.
 PHI_INTENTS = {"order_status", "order_action", "refill", "drug_price"}
 
-# Primary plan type codes take precedence over secondary (TLPDMSF-203).
+# Primary plan type codes take precedence over secondary.
 PRIMARY_PLAN_CODES = {1, 2, 3, 4, 5, 14, 15, 16, 17, 18}
 SECONDARY_PLAN_CODES = {0, 6, 7, 8, 9, 10, 11, 12, 13}
 
@@ -88,7 +87,7 @@ def requires_step_up(intent: str, level: AuthLevel) -> bool:
 def valid_member_id(token: str) -> bool:
     """Validate a member ID token.
 
-    Member IDs are alphanumeric with a 9-character minimum (TLPDMSF-372).
+    Member IDs are alphanumeric with a 9-character minimum.
 
     Args:
         token: Raw member ID input.
@@ -103,7 +102,7 @@ def valid_member_id(token: str) -> bool:
 def valid_rx_number(token: str) -> bool:
     """Validate a prescription-number token.
 
-    Rx numbers are numeric, 5–12 digits (mail or retail) per TLPDMSF-372/393.
+    Rx numbers are numeric, 5–12 digits (mail or retail).
 
     Args:
         token: Raw Rx number input (a leading ``RX-`` prefix is tolerated).

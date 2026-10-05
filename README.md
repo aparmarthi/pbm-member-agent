@@ -39,7 +39,9 @@ One agent brain, channel-appropriate hands. Chat and voice share the graph but d
 
 Self-harm/crisis intent is pinned to escalation **deterministically, before** any generic moderation — and the escalation always surfaces the **988 Suicide & Crisis Lifeline** plus a warm human handoff. This is the control a managed platform's built-in moderation layer did not guarantee; owning the graph means owning the ordering. It also holds mid-authentication: a crisis message while a credential prompt is pending still gets 988.
 
-> **Known gap:** the gate is a keyword list and catches 6 of 10 crisis phrasings in the eval set. Indirect ones like "no point in living" get through. The proposed fix (an LLM crisis flag OR'd with the gate) is in [evals/README.md](evals/README.md).
+Detection uses two independent detectors joined by OR. A C-SSRS-structured lexicon runs before any LLM call (the floor), and the router LLM returns a `crisis` flag (the primary detector for indirect language). The 988 reply follows that flag, so any detector that fires gets 988.
+
+> **Measured honestly:** the lexicon alone catches 4 of 31 crisis messages (0.13) in an independently written held-out set, even though it scores 1.00 on the dev set it was built against. Indirect phrasing ("theres nothing left for me in this life") needs the LLM flag. That can't be measured on the mock provider, so the ship gate is `crisis_recall_holdout = 1.00` on a live model. See [evals/README.md](evals/README.md).
 
 ## Run it
 
@@ -120,8 +122,9 @@ Both **chat and voice** run on the one graph, diverging by config.
 |---|---|---|
 | Groundedness (rendered lines traceable to member data) | 1.00 | = 1.00 ✅ |
 | Multi-turn task completion (16 conversations) | 1.00 | ≥ 0.90 ✅ |
-| Crisis false-escalation rate | 0.00 | ≤ 0.10 ✅ |
-| Crisis recall (escalate + 988) | 0.60 | = 1.00 ❌ open finding |
+| Crisis recall, dev set (escalate + 988) | 1.00 | = 1.00 ✅ (seen during build) |
+| Crisis recall, held-out set: lexicon only | 0.13 | = 1.00 ❌ needs live-LLM run |
+| Crisis false-escalation rate (dev / held-out) | 0.00 / 0.10 | ≤ 0.10 ✅ |
 | Routing accuracy | 0.79 | ≥ 0.90 ❌ mock keyword router; judge with a live LLM |
 
 ## Status
@@ -131,6 +134,6 @@ Both **chat and voice** run on the one graph, diverging by config.
   inline execution with confirmation is the next pass.
 - **Sessions** are in-process (`MemorySaver`). A deployment would use a durable
   checkpointer with idle expiry.
-- **Tests:** 53 passing, hermetic (mock LLM, no keys).
+- **Tests:** 57 passing, hermetic (mock LLM, no keys).
 
 See [docs/PRD.md](docs/PRD.md) and [docs/decisions.md](docs/decisions.md).

@@ -38,7 +38,7 @@ correctly from grounded system data without unnecessary escalation.
 
 ## Out of scope (next passes)
 - Deep order-action execution (voice inline execute + confirmation).
-- LLM crisis-risk classification alongside the keyword gate (see `evals/README.md`).
+- Live-LLM measurement of crisis recall on the held-out set (the ship gate).
 - Durable session store (Postgres/Redis checkpointer) and idle-session expiry.
 - RAG for benefit inquiry.
 
@@ -53,8 +53,9 @@ correctly from grounded system data without unnecessary escalation.
 
 ## Current results
 Mock-provider baseline in [`evals/README.md`](../evals/README.md): groundedness 1.00,
-task completion 16/16, false crisis escalation 0.00. **Crisis recall 0.60 fails the
-1.00 bar.** That is the top open risk.
+task completion 16/16, crisis recall 1.00 on the dev set. **On the independent held-out
+set the lexicon alone reaches 0.13.** Indirect crisis language depends on the LLM flag,
+which is unmeasured until a live-model run. That is the top open risk and the ship gate.
 
 ## Trade-offs
 - **Determinism over LLM freedom** for status derivation: sacrifices conversational

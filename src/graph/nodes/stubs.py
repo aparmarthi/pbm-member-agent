@@ -18,7 +18,8 @@ _HANDOFF = "live_agent"
 def escalation(state: AgentState) -> AgentState:
     """Hand off to a human. Crisis-safe: always surfaces a warm transfer.
 
-    For crisis-routed turns we lead with the crisis resource, then transfer —
+    For crisis turns (``crisis`` set by the lexicon gate or the LLM) we lead
+    with the crisis resource, then transfer —
     the behavior the managed platform failed to guarantee.
 
     Args:
@@ -27,10 +28,7 @@ def escalation(state: AgentState) -> AgentState:
     Returns:
         State marking the turn escalated with a handoff target.
     """
-    text = (state.get("user_input") or "").lower()
-    crisis = any(t in text for t in ("suicide", "kill myself", "self harm", "self-harm",
-                                     "hurt myself", "end my life", "want to die", "overdose"))
-    if crisis:
+    if state.get("crisis"):
         reply = (
             "I'm really glad you told me. You don't have to go through this alone — "
             "you can reach the 988 Suicide & Crisis Lifeline any time by calling or texting 988. "

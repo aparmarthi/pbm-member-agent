@@ -3,8 +3,7 @@
 The refill equivalent of ``reason_codes``. Each condition code maps to an
 eligibility outcome, member-facing copy, and whether the prescription may be
 added to the cart or must transfer to a human. Encodes the exact remapping and
-priority rules from the refill user stories (TLPDMSF-120 and the per-condition
-stories 343/344/347/354–361/122).
+priority rules from the refill requirements.
 
 These are drug-eligibility codes and copy — not member data.
 """
@@ -35,7 +34,7 @@ class RefillOutcome(str, Enum):
 # Rule 11-14 remaps applied before classification.
 _REMAP: dict[int, int] = {2: 17, 10: 19, 11: 20, 6: 18}
 
-# Refillable set (post-remap) per TLPDMSF-120. 18 is excluded from *listing*.
+# Refillable set (post-remap). 18 is excluded from *listing*.
 _REFILLABLE = {0, 17, 18, 19, 20, 26, 27, 21}
 # Listing priority (lower first). 0-today handled separately from 0-future.
 _LIST_PRIORITY = {0: 0, 17: 2, 19: 3, 20: 4, 26: 5, 27: 6, 21: 7}
@@ -134,7 +133,7 @@ def classify(raw_code: str | int | None) -> ConditionCode:
 
     Applies the remap rules (2→17, 6→18, 10→19, 11→20), then looks up the row.
     Unknown/unconfigured codes (8, 12, 14, 16, errors, missing) resolve to a
-    TRANSFER outcome per TLPDMSF-361.
+    TRANSFER outcome.
 
     Args:
         raw_code: The condition code as returned by the eligibility service.
